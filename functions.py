@@ -27,7 +27,7 @@ def eval_sympy(obj_func, x):
     if isinstance(obj_func, list):
         return np.array([eval_sympy(func, x) for func in obj_func])
         
-    elif isinstance(f_A, sp.Expr):
+    elif isinstance(obj_func, sp.Expr):
         sorted_symbols = sorted(obj_func.free_symbols, key=lambda s: s.name)
         n_x = len(sorted_symbols)
         if len(x) != n_x:
