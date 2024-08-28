@@ -119,7 +119,7 @@ def hill_climber(obj_func, delta, n_iter, x_init = None, constraints = None, n_i
 ########################
 ### GRADIENT DESCENT ###
 ########################
-def wolfe_cond(t, x, obj_func, nabla_obj_func, p, c1=0.0001, c2=0.9, max_wolf_iter = 5):
+def wolfe_cond(t, x, obj_func, nabla_obj_func, p, c1=0.0001, c2=0.9, max_wolf_iter = 8):
     """
     Wolfe condition algorithm to determine step size
 
