@@ -4,39 +4,67 @@ import sympy as sp
 
 symbols = sp.symbols('x1 x2')
 x1, x2 = sp.symbols('x1 x2')
-f_A = -2*x1**2 + 3*x1*x2 - 1.5*x2**2 - 1.3
+f_A_orig = -2*x1**2 + 3*x1*x2 - 1.5*x2**2 - 1.3
+f_A = -f_A_orig
 f_B = (4 - 2.1*x1**2 + x1**4/3)*x1**2 + x1*x2 + (-4 + 4*x2**2)*x2**2
-# f_C Rastrigin function, I do not know if 2D or 3D
+f_C = 20 + (x1**2 - 10*sp.cos(2*sp.pi*x1)) + (x2**2 - 10*sp.cos(2*sp.pi*x2)) # Rastrigin function
 
-def obj_function(x):
-    """
-    Example of a objective function to test algorithms
-    """
-    fx = x ** 2 - 40 * x + 50
-    return fx
-
+#####################
+### AUX FUNCTIONS ###
+#####################
 def eval_sympy(obj_func, x):
     """
     Parameters:
     obj_func (sympy exp or list): Objective function or list of derivates
-    x (np array):  Array of values to substitute into the objective function
+    x (np.ndarray):  Array of values to substitute into the objective function
 
     Returns:
     - f(x) (float): The evaluated function value
     """
     if isinstance(obj_func, list):
-        return np.array([eval_sympy(func, x) for func in obj_func])
-        
-    elif isinstance(f_A, sp.Expr):
+        if all(isinstance(el, list) for el in obj_func): # Hessian Matrix
+            return np.array([[eval_sympy(func, x) for func in row] for row in obj_func])
+        else:                                            # Jacobian Vector
+            return np.array([eval_sympy(func, x) for func in obj_func])
+    
+    elif isinstance(obj_func, sp.Expr):
         sorted_symbols = sorted(obj_func.free_symbols, key=lambda s: s.name)
         n_x = len(sorted_symbols)
-        if len(x) != n_x:
-            raise ValueError(f"Incompatible dimensions: Expected {n_x} values, but got {len(x)}.")
         subs_dict = {symbol: value for symbol, value in zip(sorted_symbols, x)}
         result = obj_func.subs(subs_dict)
     return float(result)
 
-# Point A
+def constraint_checker(x, constraints):
+    """
+    Checks if the new the solution of the problem is within the constraint of a problem
+
+    Parameters:
+    - x (np.ndarray): New solution to the problem
+    - constraints (list of list): Defining lower and upper limits for each variable e.g. [[-3, 3], [-2, 2]]
+
+    Returns:
+    - Boolean: True if solution is within the constraints, False otherwise
+    """
+    if len(constraints) == 0:
+        return True  # No constraints provided, always return True
+    
+    for i in range(len(x)):
+        if not (constraints[i][0] <= x[i] <= constraints[i][1]):
+            return False
+    return True
+
+def print_verbose(verbose_level, x_best, i):
+    """
+    For printing progress in search algorithms
+    """
+    if verbose_level == 1:
+        print(f'i = {i}, ' + ', '.join([f'x{idx+1} = {val}' for idx, val in enumerate(x_best)]), end='\r')
+    elif verbose_level == 2:
+        print(f'i = {i}, ' + ', '.join([f'x{idx+1} = {val}' for idx, val in enumerate(x_best)]))
+
+####################
+### HILL CLIMBER ###
+####################
 def gen_neighbor(x_best, delta):
     """
     Generates a random neighbor to x_best, works for single and multi objective minimization problems
@@ -47,7 +75,7 @@ def gen_neighbor(x_best, delta):
         size = x_best.shape
     return x_best + np.random.uniform(-delta, delta, size)
 
-def hill_climber(obj_func, delta, n_iter, x_init = None, constrain = None):
+def hill_climber(obj_func, delta, n_iter, x_init = None, constraints = None, n_intervals = 15, verbose = 1):
     """
     Continuous Hill Climber Multiple Objective Minimization algorithm
 
@@ -55,42 +83,43 @@ def hill_climber(obj_func, delta, n_iter, x_init = None, constrain = None):
     - obj_func (sympy exp): objective function
     - delta (float): open ball radius
     - n_iter (int): number of iterations
-    - x_init (float): optional, for initializating the search
+    - x_init (np.ndarray): optional, for initializating the search
+    - constraints (list of list): Defining lower and upper limits for each variable
+    - verbose (int): verbose levels 0, 1 and 2 from less verbose to more verbose
+    - n_intervals (int): number of tracking points
 
     Returns (as a tuple):
     - x_best: x solution
     - fx_best: f(x)
+    - x_history: list of numpy arrays with solutions
+    - fx_history: list of numpy arrays with values of f_x_best
     """
     n_x = len(obj_func.free_symbols)
-    x_best = x_init if x_init is not None else np.random.randint(1, 101, size=n_x) # Step 1
+    x_best = x_init if x_init is not None else np.array([np.random.uniform(low, high) for low, high in constraints]) # Step 1
     fx_best = eval_sympy(obj_func,x_best)
     i = 0                                                             # Step 2
+    x_history = []
+    fx_history = []
+
     while i < n_iter:                                                 # Step 3
         x = gen_neighbor(x_best, delta)                               # Step 4
         fx = eval_sympy(obj_func,x)                          
-        if fx < fx_best:                                              # Step 5
+        if (constraints is None or constraint_checker(x, constraints)) and (fx < fx_best): # Step 5
             x_best, fx_best = x, fx                                   # Step 6
         i += 1                                                        # Step 7
 
-        #What do we do about constrain?
-        if constrain != None:
-            if x_best[0] < constrain[0][0] :
-                x_best[0] = constrain[0][0] 
-            elif x_best[0] > constrain[0][1]:
-                x_best[0] = constrain[0][1]
-            if x_best[1] < constrain[1][0]:
-                x_best[1] = constrain[1][0]
-            elif x_best[1] > constrain[1][1] :
-                x_best[1] = constrain[1][1]
-            if (x_best[0] in constrain[0]) and (x_best[1] in constrain[1]):
-                fx_best = eval_sympy(obj_func,x_best)                          
-                return x_best, fx_best, i
-        print(f'i = {i}, x1, x2 = {x_best}', end='\r')
-    print(f'i = {i}, x1, x2 = {x_best}')
-    return x_best, fx_best, i
+        if (i % (n_iter // n_intervals) == 0) or (i == n_iter):
+            x_history.append(x_best.copy())
+            fx_history.append(fx_best)
+            if verbose > 0 : # Print n_intervals times and in the last iter
+                print_verbose(verbose, x_best, i)
 
-# Point B
-def wolfe_cond(t, x, obj_func, nabla_obj_func, p, c1=0.0001, c2=0.9, max_wolf_iter = 5):
+    return x_best, fx_best, x_history, fx_history
+
+########################
+### GRADIENT DESCENT ###
+########################
+def wolfe_cond(t, x, obj_func, nabla_obj_func, p, c1=0.0001, c2=0.9, max_wolf_iter = 8):
     """
     Wolfe condition algorithm to determine step size
 
@@ -133,100 +162,147 @@ def wolfe_cond(t, x, obj_func, nabla_obj_func, p, c1=0.0001, c2=0.9, max_wolf_it
             flag = True                                                 # Step 10
 
         #Included this max step so that it wont go to 0 or infinite.
-        if t < 0.01:
-            return 0.01
+        if t < 0.0001:
+            return 0.0001
         if t > 2.01:
             return 2
         i += 1
-    print(f't = {t}')
+    #print(f't = {t}')
     return t                       
 
-def grad_descent(obj_func, x_init, tol, max_iter = 1000, constrain = None):
+def grad_descent(obj_func, tol, x_init = None, max_iter = 1000, constraints = None, n_intervals = 15, verbose = 1):
     """
     Gradient descent algorithm 
 
     Parameters:
     - obj_func (sympy exp): objective function
     - x_init (np.ndarray): Initialized values
-    - tol ()
+    - tol (float): tolerance for the grad_norm
 
     Returns:
     - x_best: x solution
+    - fx_best: f(x)
+    - x_history: list of numpy arrays with solutions
+    - fx_history: list of numpy arrays with values of f_x_best
+
     """
-    c = 0                                                                                    # Step 2
     grad_norm = tol + 1                  
-    x_best = x_init
     sorted_symbols = sorted(obj_func.free_symbols, key=lambda s: s.name)
     n_x = len(sorted_symbols)
+    x_best = x_init if x_init is not None else np.array([np.random.uniform(low, high) for low, high in constraints]) # Step 1
+    fx_best = eval_sympy(obj_func,x_best)
+    x_history = []
+    fx_history = []
+
     nabla_obj_func = list()
     for i in range(n_x):
         nabla_obj_func.append(sp.diff(obj_func, sorted_symbols[i]))
         
-    i = 0
-    while grad_norm > tol and i < max_iter:                                                                   # Step 3
+    i = 0                                                                                     # Step 2
+    while grad_norm > tol and i < max_iter:                                                   # Step 3
         p = -eval_sympy(nabla_obj_func, x_best)                                               # Step 4
-        t = wolfe_cond(t=1, x=x_best, obj_func=obj_func, nabla_obj_func=nabla_obj_func, p=p) # Step 5
-        x_best = x_best + t * p                                                              # Step 6
-        grad_norm = np.linalg.norm(p)                                                        # Step 7
+        t = wolfe_cond(t=1, x=x_best, obj_func=obj_func, nabla_obj_func=nabla_obj_func, p=p)  # Step 5
+        x = x_best + t * p                                                                    # Step 6
+        grad_norm = np.linalg.norm(p)                                                         # Step 7
+        fx = eval_sympy(obj_func,x)
         
+        if (constraints is None or constraint_checker(x, constraints)) and (fx < fx_best):        # Step 5
+            x_best, fx_best = x, fx
         i += 1
-        #What do we do about constrain?
-        if constrain != None:
-            if x_best[0] < constrain[0][0] :
-                x_best[0] = constrain[0][0] 
-            elif x_best[0] > constrain[0][1]:
-                x_best[0] = constrain[0][1]
-            if x_best[1] < constrain[1][0]:
-                x_best[1] = constrain[1][0]
-            elif x_best[1] > constrain[1][1] :
-                x_best[1] = constrain[1][1]
-            if (x_best[0] in constrain[0]) and (x_best[1] in constrain[1]):
-                fx_best = eval_sympy(obj_func,x_best)                          
-                return x_best, eval_sympy(obj_func, x_best), i
-                
-        print(f't - {t}, i = {i}, x1, x2 = {x_best}', end='\r')
-    print(f't - {t}, i = {i}, x1, x2 = {x_best}')
-    return x_best, eval_sympy(obj_func, x_best), i
 
-## For validation purpose
+        if (i % (max_iter // max_iter) == 0) or (i == max_iter) or (grad_norm > tol):
+            x_history.append(x_best.copy())
+            fx_history.append(fx_best)
+            if verbose > 0 : # Print n_intervals times and in the last iter
+                print_verbose(verbose, x_best, i)
+        
+    return x_best, fx_best, x_history, fx_history
+
+#####################
+### NEWTON METHOD ###
+#####################
+def newton_method(obj_func, tol, x_init = None, max_iter = 1000, constraints = None, n_intervals = 15, verbose = 1):
+    """
+    Gradient descent algorithm 
+
+    Parameters:
+    - obj_func (sympy exp): objective function
+    - x_init (np.ndarray): Initialized values
+    - tol (float): tolerance for the grad_norm
+
+    Returns:
+    - x_best: x solution
+    - fx_best: f(x)
+    - x_history: list of numpy arrays with solutions
+    - fx_history: list of numpy arrays with values of f_x_best
+
+    """
+    grad_norm = tol + 1                  
+    sorted_symbols = sorted(obj_func.free_symbols, key=lambda s: s.name)
+    n_x = len(sorted_symbols)
+    x_best = x_init if x_init is not None else np.array([np.random.uniform(low, high) for low, high in constraints]) # Step 1
+    fx_best = eval_sympy(obj_func,x_best)
+    x_history = []
+    fx_history = []
+
+    nabla_obj_func = list()
+    for i in range(n_x):
+        nabla_obj_func.append(sp.diff(obj_func, sorted_symbols[i]))
+    
+    hessian_obj_func = []
+    for i in range(n_x):
+        hessian_row = []
+        for j in range(n_x):
+        # Compute the second derivative with respect to variables i and j
+            second_derivative = sp.diff(obj_func, sorted_symbols[i], sorted_symbols[j])
+            hessian_row.append(second_derivative)
+        hessian_obj_func.append(hessian_row)
+    
+    i = 0                                                                                     # Step 2
+    while grad_norm > tol and i < max_iter:                                                   # Step 3
+        hessian_eval_inv = np.linalg.inv(eval_sympy(hessian_obj_func, x_best))
+        p = -np.dot(hessian_eval_inv, eval_sympy(nabla_obj_func, x_best))                     # Step 4
+        #t = wolfe_cond(t=1, x=x_best, obj_func=obj_func, nabla_obj_func=nabla_obj_func, p=p) # Step 5
+        x = x_best + p                                                                        # Step 6
+        grad_norm = np.linalg.norm(p)                                                         # Step 7
+        fx = eval_sympy(obj_func,x)
+        
+        if (constraints is None or constraint_checker(x, constraints)) and (fx < fx_best):        # Step 5
+            x_best, fx_best = x, fx
+        i += 1
+
+        if (i % (max_iter // max_iter) == 0) or (i == max_iter) or (grad_norm > tol):
+            x_history.append(x_best.copy())
+            fx_history.append(fx_best)
+            if verbose > 0 : # Print n_intervals times and in the last iter
+                print_verbose(verbose, x_best, i)
+        
+    return x_best, fx_best, x_history, fx_history
+
+#######################
+### VALIDATION PART ###
+#######################
 import matplotlib.pyplot as plt
 import sympy as sp
 import numpy as np
-from scipy.optimize import minimize
-from mpl_toolkits.mplot3d import Axes3D
+from scipy.optimize import differential_evolution
 
-def find_minimum_scipy(obj_func, x_init, constrains):
-    """Find the minimum using scipy.optimize.minimize with constraints."""
-    f_lambdified = sp.lambdify((sp.symbols('x1'), sp.symbols('x2')), obj_func, 'numpy')
-
-    def f_np(x):
-        return f_lambdified(x[0], x[1])
-
-    # Define the bounds based on the constraints
-    bounds = [(constrains[0][0], constrains[0][1]), (constrains[1][0], constrains[1][1])]
-
-    # Use L-BFGS-B method which allows for bounds
-    res = minimize(f_np, x_init, method='L-BFGS-B', bounds=bounds)
-
-    return res.x, res.fun
-
-def plot_function_from_perspectives(obj_func, constrains, x_init):
+def plot_function_with_paths(obj_func, constraints, x_history, fx_history):
     """
-    Plot a 3D surface of the given function from three different perspectives.
+    Plot a 2D contour plot of the given function with both the true minimum found by differential evolution
+    and the precomputed optimization path from another method.
 
     Parameters:
     - obj_func (sympy exp): Objective function to minimize.
-    - constrains (list of lists): Range constraints [[x1_min, x1_max], [x2_min, x2_max]].
-    - x_min (np.ndarray): Coordinates of the minimum point to highlight.
+    - constraints (list of lists): Range constraints [[x1_min, x1_max], [x2_min, x2_max]].
+    - x_history (list of np.ndarray): List of coordinates representing the path of the optimization from another method.
+    - fx_history (list of float): List of function values corresponding to each point in x_history.
 
     Returns:
     - None
     """
-    x1_min, x1_max = constrains[0]
-    x2_min, x2_max = constrains[1]
-    
-    # Find the minimum using scipy.optimize
-    x_min_scipy, f_min_scipy = find_minimum_scipy(obj_func, x_init, constrains)
+    x1_min, x1_max = constraints[0]
+    x2_min, x2_max = constraints[1]
     
     # Create a grid of points
     x1_vals = np.linspace(x1_min, x1_max, 100)
@@ -239,48 +315,40 @@ def plot_function_from_perspectives(obj_func, constrains, x_init):
     # Evaluate the function on the grid
     Z = f_A_lambdified(X1, X2)
 
-    # Plot the 3D surface from three different perspectives
-    fig = plt.figure(figsize=(18, 12))
+    # Perform global optimization using differential evolution to find the true minimum
+    def obj_func_numpy(x):
+        return f_A_lambdified(x[0], x[1])
 
-    # Perspective 1
-    ax1 = fig.add_subplot(131, projection='3d')
-    ax1.plot_surface(X1, X2, Z, cmap='viridis')
-    ax1.scatter(x_min_scipy[0], x_min_scipy[1], f_min_scipy, color='red', s=100, label='Minimum')
-    ax1.set_xlim(constrains[0])
-    ax1.set_ylim(constrains[1])
-    ax1.set_xlabel('x1')
-    ax1.set_ylabel('x2')
-    ax1.set_zlabel('f(x1, x2)')
-    ax1.view_init(elev=20, azim=60)
-    ax1.legend()
-    ax1.set_title('Perspective 1')
+    # Define bounds for the differential evolution
+    bounds = [(x1_min, x1_max), (x2_min, x2_max)]
 
-    # Perspective 2
-    ax2 = fig.add_subplot(132, projection='3d')
-    ax2.plot_surface(X1, X2, Z, cmap='viridis')
-    ax2.scatter(x_min_scipy[0], x_min_scipy[1], f_min_scipy, color='red', s=100, label='Minimum')
-    ax2.set_xlim(constrains[0])
-    ax2.set_ylim(constrains[1])
-    ax2.set_xlabel('x1')
-    ax2.set_ylabel('x2')
-    ax2.set_zlabel('f(x1, x2)')
-    ax2.view_init(elev=30, azim=-60)
-    ax2.legend()
-    ax2.set_title('Perspective 2')
+    # Run the differential evolution algorithm
+    result = differential_evolution(obj_func_numpy, bounds)
 
-    # Perspective 3
-    ax3 = fig.add_subplot(133, projection='3d')
-    ax3.plot_surface(X1, X2, Z, cmap='viridis')
-    ax3.scatter(x_min_scipy[0], x_min_scipy[1], f_min_scipy, color='red', s=100, label='Minimum')
-    ax3.set_xlim(constrains[0])
-    ax3.set_ylim(constrains[1])
-    ax3.set_xlabel('x1')
-    ax3.set_ylabel('x2')
-    ax3.set_zlabel('f(x1, x2)')
-    ax3.view_init(elev=45, azim=120)
-    ax3.legend()
-    ax3.set_title('Perspective 3')
+    # Convert x_history to a numpy array for easier indexing
+    x_history = np.array(x_history)
+
+    # Plotting the 2D contour plot
+    plt.figure(figsize=(8, 6))
+    plt.contour(X1, X2, Z, levels=30, cmap='viridis')
     
-    print(f"Minimum found by scipy at x1 = {x_min_scipy[0]}, x2 = {x_min_scipy[1]}, with value = {f_min_scipy}")
+    # Plot the precomputed path from your model
+    plt.plot(x_history[:, 0], x_history[:, 1], 'ro-', linewidth=2, markersize=4, label='Model Path')
+    
+    # Mark the true minimum found by differential evolution
+    plt.scatter(result.x[0], result.x[1], color='blue', s=100, label='True Minimum (Differential Evolution)')
+    
+    # Mark the minimum found by your model
+    plt.scatter(x_history[-1, 0], x_history[-1, 1], color='red', s=100, label='Model Minimum')
 
+    plt.xlim([x1_min, x1_max])
+    plt.ylim([x2_min, x2_max])
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title('Contour Plot with Optimization Paths')
+    
+    plt.legend()
     plt.show()
+    
+    print(f"True minimum found by differential evolution at x1 = {result.x[0]:.2f}, x2 = {result.x[1]:.2f}, with value = {result.fun:.2f}")
+    print(f"Model minimum at x1 = {x_history[-1, 0]:.2f}, x2 = {x_history[-1, 1]:.2f}, with value = {fx_history[-1]:.2f}")

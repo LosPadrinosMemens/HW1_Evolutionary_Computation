@@ -285,41 +285,24 @@ def newton_method(obj_func, tol, x_init = None, max_iter = 1000, constraints = N
 import matplotlib.pyplot as plt
 import sympy as sp
 import numpy as np
-from scipy.optimize import minimize
-from mpl_toolkits.mplot3d import Axes3D
+from scipy.optimize import differential_evolution
 
-def find_minimum_scipy(obj_func, x_init, constraints):
-    """Find the minimum using scipy.optimize.minimize with constraints."""
-    f_lambdified = sp.lambdify((sp.symbols('x1'), sp.symbols('x2')), obj_func, 'numpy')
-
-    def f_np(x):
-        return f_lambdified(x[0], x[1])
-
-    # Define the bounds based on the constraints
-    bounds = [(constraints[0][0], constraints[0][1]), (constraints[1][0], constraints[1][1])]
-
-    # Use L-BFGS-B method which allows for bounds
-    res = minimize(f_np, x_init, method='L-BFGS-B', bounds=bounds)
-
-    return res.x, res.fun
-
-def plot_function_from_perspectives(obj_func, constraints, x_init):
+def plot_function_with_paths(obj_func, constraints, x_history, fx_history):
     """
-    Plot a 3D surface of the given function from three different perspectives.
+    Plot a 2D contour plot of the given function with both the true minimum found by differential evolution
+    and the precomputed optimization path from another method.
 
     Parameters:
     - obj_func (sympy exp): Objective function to minimize.
     - constraints (list of lists): Range constraints [[x1_min, x1_max], [x2_min, x2_max]].
-    - x_min (np.ndarray): Coordinates of the minimum point to highlight.
+    - x_history (list of np.ndarray): List of coordinates representing the path of the optimization from another method.
+    - fx_history (list of float): List of function values corresponding to each point in x_history.
 
     Returns:
     - None
     """
     x1_min, x1_max = constraints[0]
     x2_min, x2_max = constraints[1]
-    
-    # Find the minimum using scipy.optimize
-    x_min_scipy, f_min_scipy = find_minimum_scipy(obj_func, x_init, constraints)
     
     # Create a grid of points
     x1_vals = np.linspace(x1_min, x1_max, 100)
@@ -332,48 +315,40 @@ def plot_function_from_perspectives(obj_func, constraints, x_init):
     # Evaluate the function on the grid
     Z = f_A_lambdified(X1, X2)
 
-    # Plot the 3D surface from three different perspectives
-    fig = plt.figure(figsize=(18, 12))
+    # Perform global optimization using differential evolution to find the true minimum
+    def obj_func_numpy(x):
+        return f_A_lambdified(x[0], x[1])
 
-    # Perspective 1
-    ax1 = fig.add_subplot(131, projection='3d')
-    ax1.plot_surface(X1, X2, Z, cmap='viridis')
-    ax1.scatter(x_min_scipy[0], x_min_scipy[1], f_min_scipy, color='red', s=100, label='Minimum')
-    ax1.set_xlim(constraints[0])
-    ax1.set_ylim(constraints[1])
-    ax1.set_xlabel('x1')
-    ax1.set_ylabel('x2')
-    ax1.set_zlabel('f(x1, x2)')
-    ax1.view_init(elev=20, azim=60)
-    ax1.legend()
-    ax1.set_title('Perspective 1')
+    # Define bounds for the differential evolution
+    bounds = [(x1_min, x1_max), (x2_min, x2_max)]
 
-    # Perspective 2
-    ax2 = fig.add_subplot(132, projection='3d')
-    ax2.plot_surface(X1, X2, Z, cmap='viridis')
-    ax2.scatter(x_min_scipy[0], x_min_scipy[1], f_min_scipy, color='red', s=100, label='Minimum')
-    ax2.set_xlim(constraints[0])
-    ax2.set_ylim(constraints[1])
-    ax2.set_xlabel('x1')
-    ax2.set_ylabel('x2')
-    ax2.set_zlabel('f(x1, x2)')
-    ax2.view_init(elev=30, azim=-60)
-    ax2.legend()
-    ax2.set_title('Perspective 2')
+    # Run the differential evolution algorithm
+    result = differential_evolution(obj_func_numpy, bounds)
 
-    # Perspective 3
-    ax3 = fig.add_subplot(133, projection='3d')
-    ax3.plot_surface(X1, X2, Z, cmap='viridis')
-    ax3.scatter(x_min_scipy[0], x_min_scipy[1], f_min_scipy, color='red', s=100, label='Minimum')
-    ax3.set_xlim(constraints[0])
-    ax3.set_ylim(constraints[1])
-    ax3.set_xlabel('x1')
-    ax3.set_ylabel('x2')
-    ax3.set_zlabel('f(x1, x2)')
-    ax3.view_init(elev=45, azim=120)
-    ax3.legend()
-    ax3.set_title('Perspective 3')
+    # Convert x_history to a numpy array for easier indexing
+    x_history = np.array(x_history)
+
+    # Plotting the 2D contour plot
+    plt.figure(figsize=(8, 6))
+    plt.contour(X1, X2, Z, levels=30, cmap='viridis')
     
-    print(f"Minimum found by scipy at x1 = {x_min_scipy[0]}, x2 = {x_min_scipy[1]}, with value = {f_min_scipy}")
+    # Plot the precomputed path from your model
+    plt.plot(x_history[:, 0], x_history[:, 1], 'ro-', linewidth=2, markersize=4, label='Model Path')
+    
+    # Mark the true minimum found by differential evolution
+    plt.scatter(result.x[0], result.x[1], color='blue', s=100, label='True Minimum (Differential Evolution)')
+    
+    # Mark the minimum found by your model
+    plt.scatter(x_history[-1, 0], x_history[-1, 1], color='red', s=100, label='Model Minimum')
 
+    plt.xlim([x1_min, x1_max])
+    plt.ylim([x2_min, x2_max])
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title('Contour Plot with Optimization Paths')
+    
+    plt.legend()
     plt.show()
+    
+    print(f"True minimum found by differential evolution at x1 = {result.x[0]:.2f}, x2 = {result.x[1]:.2f}, with value = {result.fun:.2f}")
+    print(f"Model minimum at x1 = {x_history[-1, 0]:.2f}, x2 = {x_history[-1, 1]:.2f}, with value = {fx_history[-1]:.2f}")
