@@ -53,14 +53,14 @@ def constraint_checker(x, constraints):
             return False
     return True
 
-def print_verbose(verbose_level, x_best, i):
+def print_verbose(verbose_level, x_best, fx_best, i):
     """
     For printing progress in search algorithms
     """
     if verbose_level == 1:
-        print(f'i = {i}, ' + ', '.join([f'x{idx+1} = {val}' for idx, val in enumerate(x_best)]), end='\r')
+        print(f'i = {i}, ' + ', '.join([f'x{idx+1} = {val:.7f}' for idx, val in enumerate(x_best)]) + f', fx_best = {fx_best:.7f}', end='\r')
     elif verbose_level == 2:
-        print(f'i = {i}, ' + ', '.join([f'x{idx+1} = {val}' for idx, val in enumerate(x_best)]))
+        print(f'i = {i}, ' + ', '.join([f'x{idx+1} = {val:.7f}' for idx, val in enumerate(x_best)]) + f', fx_best = {fx_best:.7f}')
 
 ####################
 ### HILL CLIMBER ###
@@ -98,8 +98,8 @@ def hill_climber(obj_func, delta, n_iter, x_init = None, constraints = None, n_i
     x_best = x_init if x_init is not None else np.array([np.random.uniform(low, high) for low, high in constraints]) # Step 1
     fx_best = eval_sympy(obj_func,x_best)
     i = 0                                                             # Step 2
-    x_history = []
-    fx_history = []
+    x_history = [x_best]
+    fx_history = [fx_best]
 
     while i < n_iter:                                                 # Step 3
         x = gen_neighbor(x_best, delta)                               # Step 4
@@ -112,7 +112,7 @@ def hill_climber(obj_func, delta, n_iter, x_init = None, constraints = None, n_i
             x_history.append(x_best.copy())
             fx_history.append(fx_best)
             if verbose > 0 : # Print n_intervals times and in the last iter
-                print_verbose(verbose, x_best, i)
+                print_verbose(verbose, x_best, fx_best, i)
 
     return x_best, fx_best, x_history, fx_history
 
@@ -151,7 +151,7 @@ def wolfe_cond(t, x, obj_func, nabla_obj_func, p, c1=0.0001, c2=0.9, max_wolf_it
         # grad_xtp'*p >= c2*grad_x*p
         right_expr1 = f_x + c1*t*grad_x_dot_p
         left_expr2 = np.dot(eval_sympy(nabla_obj_func, x_tp),p)
-        print(f't = {t}', end='\r')
+        #print(f't = {t}', end='\r')
 
         # Comparisons seem reversed, but it is correct LoL
         if left_expr1 >= right_expr1:                                    # Step 5
@@ -191,8 +191,8 @@ def grad_descent(obj_func, tol, x_init = None, max_iter = 1000, constraints = No
     n_x = len(sorted_symbols)
     x_best = x_init if x_init is not None else np.array([np.random.uniform(low, high) for low, high in constraints]) # Step 1
     fx_best = eval_sympy(obj_func,x_best)
-    x_history = []
-    fx_history = []
+    x_history = [x_best]
+    fx_history = [fx_best]
 
     nabla_obj_func = list()
     for i in range(n_x):
@@ -210,13 +210,13 @@ def grad_descent(obj_func, tol, x_init = None, max_iter = 1000, constraints = No
             x_best, fx_best = x, fx
         i += 1
 
-        if (i % (max_iter // max_iter) == 0) or (i == max_iter) or (grad_norm > tol):
+        if (i % (max_iter // n_intervals) == 0) or (i == max_iter) or (grad_norm > tol):
             x_history.append(x_best.copy())
             fx_history.append(fx_best)
             if verbose > 0 : # Print n_intervals times and in the last iter
-                print_verbose(verbose, x_best, i)
+                print_verbose(verbose, x_best, fx_best, i)
         
-    return x_best, fx_best, x_history, fx_history
+    return x_best, fx_best, x_history, fx_history, i
 
 #####################
 ### NEWTON METHOD ###
@@ -242,8 +242,8 @@ def newton_method(obj_func, tol, x_init = None, max_iter = 1000, constraints = N
     n_x = len(sorted_symbols)
     x_best = x_init if x_init is not None else np.array([np.random.uniform(low, high) for low, high in constraints]) # Step 1
     fx_best = eval_sympy(obj_func,x_best)
-    x_history = []
-    fx_history = []
+    x_history = [x_best]
+    fx_history = [fx_best]
 
     nabla_obj_func = list()
     for i in range(n_x):
@@ -271,13 +271,13 @@ def newton_method(obj_func, tol, x_init = None, max_iter = 1000, constraints = N
             x_best, fx_best = x, fx
         i += 1
 
-        if (i % (max_iter // max_iter) == 0) or (i == max_iter) or (grad_norm > tol):
+        if (i % (max_iter // n_intervals) == 0) or (i == max_iter) or (grad_norm > tol):
             x_history.append(x_best.copy())
             fx_history.append(fx_best)
             if verbose > 0 : # Print n_intervals times and in the last iter
-                print_verbose(verbose, x_best, i)
+                print_verbose(verbose, x_best, fx_best, i)
         
-    return x_best, fx_best, x_history, fx_history
+    return x_best, fx_best, x_history, fx_history, i
 
 #######################
 ### VALIDATION PART ###
@@ -333,13 +333,13 @@ def plot_function_with_paths(obj_func, constraints, x_history, fx_history):
     plt.contour(X1, X2, Z, levels=30, cmap='viridis')
     
     # Plot the precomputed path from your model
-    plt.plot(x_history[:, 0], x_history[:, 1], 'ro-', linewidth=2, markersize=4, label='Model Path')
+    plt.plot(x_history[:, 0], x_history[:, 1], 'ro-', linewidth=2, markersize=3, label='Model Path', alpha=0.7)
     
     # Mark the true minimum found by differential evolution
-    plt.scatter(result.x[0], result.x[1], color='blue', s=100, label='True Minimum (Differential Evolution)')
+    plt.scatter(result.x[0], result.x[1], color='blue', s=70, label='True Minimum (Differential Evolution)', alpha=0.7)
     
     # Mark the minimum found by your model
-    plt.scatter(x_history[-1, 0], x_history[-1, 1], color='red', s=100, label='Model Minimum')
+    plt.scatter(x_history[-1, 0], x_history[-1, 1], color='red', s=70, label='Model Minimum', alpha=0.7)
 
     plt.xlim([x1_min, x1_max])
     plt.ylim([x2_min, x2_max])
@@ -352,3 +352,5 @@ def plot_function_with_paths(obj_func, constraints, x_history, fx_history):
     
     print(f"True minimum found by differential evolution at x1 = {result.x[0]:.2f}, x2 = {result.x[1]:.2f}, with value = {result.fun:.2f}")
     print(f"Model minimum at x1 = {x_history[-1, 0]:.2f}, x2 = {x_history[-1, 1]:.2f}, with value = {fx_history[-1]:.2f}")
+    L2_norm_x= np.linalg.norm(result.x - x_history[-1])
+    print(f"L2 norm error for parameters: {L2_norm_x}")
